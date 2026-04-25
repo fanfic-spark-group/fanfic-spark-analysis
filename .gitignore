@@ -1,0 +1,19 @@
+# Data files (DO NOT PUSH DATASET)
+*.parquet
+*.csv
+*.json
+*.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment / misc
+.env
+.DS_Store
+
+# Scripts
+scripts/
