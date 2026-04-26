@@ -46,23 +46,23 @@ All work was performed on SDSC Expanse via the JupyterHub portal at [portal.expa
 We allocated **16 cores / 128 GB** in the Jupyter session. Following the formula from [`ucsd-dsc232r/group-project/SPARK_HPC_BEST_PRACTICES.md`](https://github.com/ucsd-dsc232r/group-project/blob/main/SPARK_HPC_BEST_PRACTICES.md):
 
 ```
-Driver memory       = 2 GB (fixed; driver does not process data)
+Driver memory       = 4 GB (interactive-Jupyter exception, see below)
 Executor instances  = Total Cores - 1 = 15
 Executor memory     = (Total Memory - Driver Memory) / Executor Instances
-                    = (128 - 2) / 15 ≈ 8.4 GB → rounded to 8 GB
+                    = (128 - 4) / 15 ≈ 8.3 GB → rounded to 8 GB
 ```
 
 Resulting builder:
 
 ```python
 spark = SparkSession.builder \
-    .config("spark.driver.memory", "2g") \
+    .config("spark.driver.memory", "4g") \
     .config("spark.executor.memory", "8g") \
     .config("spark.executor.instances", 15) \
     .getOrCreate()
 ```
 
-**Why 2 GB driver (not 4 GB)?** `SPARK_HPC_BEST_PRACTICES.md` recommends 4 GB for interactive Jupyter when there are frequent `toPandas()` calls. All `toPandas()` calls in this notebook are on **post-aggregation or post-sample** results (≤ a few thousand rows), so the driver doesn't need extra headroom for collect operations.
+**Why 4 GB driver (not 2 GB)?** `SPARK_HPC_BEST_PRACTICES.md` lists interactive Jupyter analysis as one of the documented exception cases for raising driver memory above the 2 GB default. The fanfics corpus has heterogeneous Parquet schemas across its 1,047 shards (`language` is encoded as string in most shards but as INT32 in some), which the data-load cell handles by reading each subset and unioning them with type normalization. The resulting logical plan is large enough that the 2 GB driver ran out of headroom during interactive aggregations. Bumping to 4 GB gives the driver room for plan compilation and broadcast metadata while keeping executor memory comfortable at 8 GB × 15.
 
 **Spark UI screenshot** (parallel task dispatch during the §3c deduplication shuffle):
 
