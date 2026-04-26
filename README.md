@@ -74,7 +74,7 @@ spark = SparkSession.builder \
 
 **Spark UI** (SparkSession HTML widget plus full configuration printout — local-mode driver acting as a 16-core executor; the executors-API output in cell 17 of the notebook confirms `totalCores=16`, `isActive=True`):
 
-![Spark UI](notebook/spark-ui.png)
+![Spark UI](notebook/spark-ui-2.png)
 
 ## Notebook
 
