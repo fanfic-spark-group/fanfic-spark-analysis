@@ -43,26 +43,31 @@ All work was performed on SDSC Expanse via the JupyterHub portal at [portal.expa
 
 ## SparkSession Configuration
 
-We allocated **16 cores / 128 GB** in the Jupyter session. Following the formula from [`ucsd-dsc232r/group-project/SPARK_HPC_BEST_PRACTICES.md`](https://github.com/ucsd-dsc232r/group-project/blob/main/SPARK_HPC_BEST_PRACTICES.md):
+We allocated **16 cores / 128 GB** in the Jupyter session. The formula from [`ucsd-dsc232r/group-project/SPARK_HPC_BEST_PRACTICES.md`](https://github.com/ucsd-dsc232r/group-project/blob/main/SPARK_HPC_BEST_PRACTICES.md) is the starting point, with two corpus-specific adjustments:
 
 ```
-Driver memory       = 4 GB (interactive-Jupyter exception, see below)
+Driver memory       = 16 GB (local-mode override, see below)
 Executor instances  = Total Cores - 1 = 15
 Executor memory     = (Total Memory - Driver Memory) / Executor Instances
-                    = (128 - 4) / 15 ≈ 8.3 GB → rounded to 8 GB
+                    = (128 - 16) / 15 ≈ 7.5 GB → kept at 8 GB for documentation
 ```
 
 Resulting builder:
 
 ```python
 spark = SparkSession.builder \
-    .config("spark.driver.memory", "4g") \
+    .config("spark.driver.memory", "16g") \
     .config("spark.executor.memory", "8g") \
     .config("spark.executor.instances", 15) \
+    .config("spark.sql.parquet.enableVectorizedReader", "false") \
     .getOrCreate()
 ```
 
-**Why 4 GB driver (not 2 GB)?** `SPARK_HPC_BEST_PRACTICES.md` lists interactive Jupyter analysis as one of the documented exception cases for raising driver memory above the 2 GB default. The fanfics corpus has heterogeneous Parquet schemas across its 1,047 shards (`language` is encoded as string in most shards but as INT32 in some), which the data-load cell handles by reading each subset and unioning them with type normalization. The resulting logical plan is large enough that the 2 GB driver ran out of headroom during interactive aggregations. Bumping to 4 GB gives the driver room for plan compilation and broadcast metadata while keeping executor memory comfortable at 8 GB × 15.
+**Why 16 GB driver (not 2 GB)?** The Expanse JupyterLab Spark image launches in `local[*]` mode rather than provisioning YARN executors. In local mode the driver JVM **is** the executor — `executor.memory` and `executor.instances` are inactive and all task memory pressure falls on the driver heap. Sixteen concurrent tasks reading TEXT rows up to ~6 MB each need substantially more than the 2 GB default. We bump driver memory to 16 GB; the documented `executor.*` settings stay in the builder for portability to a future YARN setup but are no-ops here.
+
+**Why disable the vectorized Parquet reader?** The corpus contains TEXT records up to ~6 MB. Spark's default vectorized Parquet reader allocates contiguous on-heap buffers proportional to its batch size (4,096 rows) and column width, which OOMs the JVM when batches contain large TEXT values. Disabling vectorized reading switches to row-by-row reads with bounded per-row memory; we accept a small read-throughput cost (~2-3×) in exchange for stability across the corpus.
+
+**Schema-heterogeneity note.** The corpus's 1,047 Parquet shards do not share a uniform schema: most shards encode `language` as `string`, but some encode it as `INT32`, and some shards omit `__null_dask_index__` entirely. The notebook's data-load cell reads each shard's footer, splits the file list by `language` physical type, loads the two subsets, casts the INT32 subset to string, and unions them with `allowMissingColumns=True`. This preserves all 5,252,058 rows; the heterogeneity itself surfaces in the §3 frequency tables and is addressed in the §5 preprocessing plan.
 
 **Spark UI screenshot** (parallel task dispatch during the §3c deduplication shuffle):
 
